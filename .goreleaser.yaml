@@ -18,10 +18,10 @@ brews:
   - ids:
       - darwin
     install: |
-      bin.install "nomad-logger"
+      bin.install "{{.ProjectName}}"
     repository:
       owner: attachmentgenie
-      name: nomad-logger 
+      name: homebrew-tap
 builds:
   - id: darwin
     env:
@@ -79,6 +79,15 @@ docker_manifests:
     image_templates:
       - "ghcr.io/attachmentgenie/{{.ProjectName}}:{{ .Version }}-amd64"
       - "ghcr.io/attachmentgenie/{{.ProjectName}}:{{ .Version }}-arm64v7"
+nfpms:
+  - id: darwin
+    maintainer: 'bram vogelaar <bram@attachmentgenie.com>'
+    package_name: "{{.ProjectName}}"
+    builds:
+      - linux
+    formats:
+      - deb
+      - rpm
 release:
   prerelease: auto
 checksum:

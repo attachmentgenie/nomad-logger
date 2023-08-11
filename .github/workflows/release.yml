@@ -1,4 +1,4 @@
-name: release nomad-logger
+name: release artifacts for tag
 on:
   push:
     tags:
