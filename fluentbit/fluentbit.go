@@ -2,67 +2,90 @@ package fluentbit
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"text/template"
 	"time"
 
-	"github.com/dmaes/nomad-logger/nomad"
-	"github.com/dmaes/nomad-logger/util"
-
 	"github.com/hashicorp/nomad/api"
 
-	_ "embed"
+	"github.com/dmaes/nomad-logger/nomad"
+	"github.com/dmaes/nomad-logger/util"
 )
 
 type Fluentbit struct {
-	Nomad     *nomad.Nomad
-	ConfFile  string
-	TagPrefix string
-	Parser    string
-	ReloadCmd string
+	Nomad         *nomad.Nomad
+	ConfFile      string
+	TagPrefix     string
+	Parser        string
+	ReloadCmd     string
+	CheckInterval int64
 }
 
 //go:embed fluentbit-conf.gotmpl
 var FluentbitConfTmpl string
 
-func (f *Fluentbit) Run() {
-	log.Println("Starting nomad-logger for Fluentbit")
+func (f *Fluentbit) Run(m *util.Metrics) {
 	for {
 		time.Sleep(1 * time.Second)
-		allocs := f.Nomad.Allocs()
-		f.UpdateConf(allocs)
+		allocs, err := f.Nomad.Allocs()
+		if err != nil {
+			slog.Error(err.Error())
+		}
+
+		m.Allocs.Set(float64(len(allocs)))
+		updateErr := f.UpdateConf(allocs)
+		if updateErr != nil {
+			slog.Error(updateErr.Error())
+		}
 	}
 }
 
-func (f *Fluentbit) UpdateConf(Allocs []*api.Allocation) {
+func (f *Fluentbit) UpdateConf(Allocs []*api.Allocation) error {
 	config := ""
 
 	for _, alloc := range Allocs {
-		config += f.AllocToConfig(alloc)
+		allocConfig, allocErr := f.AllocToConfig(alloc)
+		if allocErr != nil {
+			return allocErr
+		}
+		config += allocConfig
 	}
 
-	util.WriteConfig(config, f.ConfFile, f.ReloadCmd)
+	writeErr := util.WriteConfig(config, f.ConfFile, f.ReloadCmd)
+	if writeErr != nil {
+		return writeErr
+	}
+	return nil
 }
 
-func (f *Fluentbit) AllocToConfig(Alloc *api.Allocation) string {
+func (f *Fluentbit) AllocToConfig(Alloc *api.Allocation) (string, error) {
 	tasks, err := nomad.AllocTasks(Alloc)
 	if err != nil {
-		log.Fatalln(err)
+		return "", err
 	}
 
 	config := ""
 
 	for _, task := range tasks {
-		config += f.AllocTaskStreamToConfig(Alloc, task, "stdout")
-		config += f.AllocTaskStreamToConfig(Alloc, task, "stderr")
+		stdOutConfig, stdOutErr := f.AllocTaskStreamToConfig(Alloc, task, "stdout")
+		if stdOutErr != nil {
+			return "", stdOutErr
+		}
+		config += stdOutConfig
+		stdErrConfig, stdErrErr := f.AllocTaskStreamToConfig(Alloc, task, "stderr")
+		if stdErrErr != nil {
+			return "", stdErrErr
+		}
+		config += stdErrConfig
 	}
 
-	return config
+	return config, nil
 }
 
-func (f *Fluentbit) AllocTaskStreamToConfig(Alloc *api.Allocation, Task *api.Task, Stream string) string {
+func (f *Fluentbit) AllocTaskStreamToConfig(Alloc *api.Allocation, Task *api.Task, Stream string) (string, error) {
 	tagPrefix := f.Nomad.TaskMetaGet(*Task, "fluentbit.tag-prefix", f.TagPrefix)
 	tag := fmt.Sprintf("%s.%s.%s.%s", tagPrefix, Alloc.ID, Task.Name, Stream)
 
@@ -103,10 +126,10 @@ func (f *Fluentbit) AllocTaskStreamToConfig(Alloc *api.Allocation, Task *api.Tas
 	var tplBuffer bytes.Buffer
 	err := tpl.Execute(&tplBuffer, fluentbitConfig)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
-	return tplBuffer.String()
+	return tplBuffer.String(), nil
 }
 
 type FluentbitConfig struct {

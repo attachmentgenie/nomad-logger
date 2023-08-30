@@ -2,35 +2,57 @@ package util
 
 import (
 	"fmt"
-	"log"
+	"github.com/prometheus/client_golang/prometheus"
+	"log/slog"
 	"os"
 	"os/exec"
 )
 
-func WriteConfig(Config string, File string, ReloadCmd string) {
+type Metrics struct {
+	Allocs prometheus.Gauge
+}
+
+func NewMetrics() *Metrics {
+	m := &Metrics{
+		Allocs: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "nomad_logger",
+			Name:      "allocs_processed",
+		}),
+	}
+	prometheus.MustRegister(m.Allocs)
+	return m
+}
+
+func WriteConfig(Config string, File string, ReloadCmd string) error {
 	oldConfig := ""
 	oldConfBytes, err := os.ReadFile(File)
 	if err != nil && err.Error() != fmt.Sprintf("open %s: no such file or directory", File) {
-		log.Fatal(err)
+		slog.Error(err.Error())
+		return err
 	} else if err == nil {
 		oldConfig = string(oldConfBytes)
 	}
 
 	if oldConfig == Config {
-		return
+		return nil
 	}
 
-	log.Print("Updating config")
-	os.WriteFile(File, []byte(Config), 0644)
+	slog.Info("Updating config")
+	writeErr := os.WriteFile(File, []byte(Config), 0644)
+	if writeErr != nil {
+		return writeErr
+	}
 
 	if ReloadCmd == "" {
-		return
+		return nil
 	}
 
-	log.Print("Executing ReloadCmd")
+	slog.Info("Executing ReloadCmd")
 	out, cmdErr := exec.Command("/bin/sh", "-c", ReloadCmd).CombinedOutput()
-	log.Print(out)
+	slog.Info(string(out))
 	if cmdErr != nil {
-		log.Fatal(cmdErr)
+		slog.Error(cmdErr.Error())
+		return cmdErr
 	}
+	return nil
 }

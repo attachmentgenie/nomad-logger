@@ -3,46 +3,37 @@ package nomad
 import (
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"regexp"
 
 	"github.com/hashicorp/nomad/api"
 )
 
 type Nomad struct {
+	Client     *api.Client
 	Address    string
 	AllocsDir  string
 	NodeID     string
 	MetaPrefix string
 }
 
-func (n *Nomad) Client() *api.Client {
+func (n *Nomad) NewClient() error {
 	config := *api.DefaultConfig()
 	config.Address = n.Address
 	client, err := api.NewClient(&config)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	return client
+
+	n.Client = client
+	return nil
 }
 
-func (n *Nomad) SetNodeIDFromEnvs() {
-	q := &api.QueryOptions{Namespace: os.Getenv("NOMAD_NAMESPACE")}
-	alloc, _, err := n.Client().Allocations().Info(os.Getenv("NOMAD_ALLOC_ID"), q)
+func (n *Nomad) Allocs() ([]*api.Allocation, error) {
+	allocs, _, err := n.Client.Nodes().Allocations(n.NodeID, nil)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
-	log.Printf("Found node id %s using env vars\n", alloc.NodeID)
-	n.NodeID = alloc.NodeID
-}
-
-func (n *Nomad) Allocs() []*api.Allocation {
-	allocs, _, err := n.Client().Nodes().Allocations(n.NodeID, nil)
-	if err != nil {
-		panic(err)
-	}
-	return allocs
+	return allocs, nil
 }
 
 func (n *Nomad) TaskMeta(Task api.Task) map[string]string {

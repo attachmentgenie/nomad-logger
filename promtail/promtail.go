@@ -2,7 +2,7 @@ package promtail
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/dmaes/nomad-logger/nomad"
@@ -13,41 +13,58 @@ import (
 )
 
 type Promtail struct {
-	Nomad       *nomad.Nomad
-	TargetsFile string
+	Nomad         *nomad.Nomad
+	TargetsFile   string
+	CheckInterval int64
 }
 
-func (p *Promtail) Run() {
-	log.Println("Starting nomad-logger for Promtail")
+func (p *Promtail) Run(m *util.Metrics) {
 	for {
 		time.Sleep(1 * time.Second)
-		allocs := p.Nomad.Allocs()
-		p.UpdatePromtailTargets(allocs)
+		allocs, err := p.Nomad.Allocs()
+		if err != nil {
+			slog.Error(err.Error())
+		}
+
+		m.Allocs.Set(float64(len(allocs)))
+		updateErr := p.UpdatePromtailTargets(allocs)
+		if updateErr != nil {
+			slog.Error(updateErr.Error())
+		}
 	}
 }
 
-func (p *Promtail) UpdatePromtailTargets(Allocs []*api.Allocation) {
+func (p *Promtail) UpdatePromtailTargets(Allocs []*api.Allocation) error {
 	config := []*ScrapeConfig{}
 
 	for _, alloc := range Allocs {
-		config = append(config, p.AllocToScrapeConfigs(alloc)...)
+		ScrapeConfigs, err := p.AllocToScrapeConfigs(alloc)
+		if err != nil {
+			slog.Error(err.Error())
+		}
+		config = append(config, ScrapeConfigs...)
 	}
 
 	yamlBytes, err := yaml.Marshal(&config)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	yamlString := string(yamlBytes)
 
-	util.WriteConfig(yamlString, p.TargetsFile, "")
+	writeErr := util.WriteConfig(yamlString, p.TargetsFile, "")
+	if writeErr != nil {
+		return writeErr
+	}
+
+	return nil
 }
 
-func (p *Promtail) AllocToScrapeConfigs(Alloc *api.Allocation) []*ScrapeConfig {
+func (p *Promtail) AllocToScrapeConfigs(Alloc *api.Allocation) ([]*ScrapeConfig, error) {
 	configs := []*ScrapeConfig{}
 
 	tasks, err := nomad.AllocTasks(Alloc)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
 	for _, task := range tasks {
@@ -55,7 +72,7 @@ func (p *Promtail) AllocToScrapeConfigs(Alloc *api.Allocation) []*ScrapeConfig {
 		configs = append(configs, p.AllocTaskStreamToScrapeConfig(Alloc, task, "stderr"))
 	}
 
-	return configs
+	return configs, nil
 }
 
 func (p *Promtail) AllocTaskStreamToScrapeConfig(Alloc *api.Allocation, Task *api.Task, Stream string) *ScrapeConfig {

@@ -1,13 +1,21 @@
 package main
 
 import (
+	"fmt"
+	"github.com/dmaes/nomad-logger/util"
 	"log"
+	"log/slog"
+	"net/http"
+
+	"github.com/alexflint/go-arg"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	promversion "github.com/prometheus/common/version"
 
 	"github.com/dmaes/nomad-logger/fluentbit"
 	"github.com/dmaes/nomad-logger/nomad"
 	"github.com/dmaes/nomad-logger/promtail"
-
-	"github.com/alexflint/go-arg"
 )
 
 var args struct {
@@ -21,41 +29,60 @@ var args struct {
 	FluentbitTagPrefix  string `arg:"--fluentbit-tag-prefix,env:FLUENTBIT_TAG_PREFIX" default:"nomad" help:"Prefix to use for fluentbit tags. Full tag will be '$prefix.$allocId"`
 	FluentbitParser     string `arg:"--fluentbit-parser,env:FLUENTBIT_PARSER" default:"" help:"Parser to apply on every input. Empty string for none"`
 	PromtailTargetsFile string `arg:"--promtail-targets-file,env:PROMTAIL_TARGETS_FILE" default:"/etc/promtail/nomad.yaml" help:"The promtail file_sd_config file where the generated config can be written. Will be completely overwritten, so don't put anything else there."`
+	PrometheusPort      string `arg:"--metrics-port,env:METRICS_PORT" default:"2112" help:"The port to show metrics on"`
+	CheckInterval       int64  `arg:"--check-interval,env:CHECK_INTERVAL" default:"1" help:"Interval (sec) between checking for new allocations."`
 }
 
 func main() {
 	arg.MustParse(&args)
 
-	nomad := &nomad.Nomad{
+	nmd := &nomad.Nomad{
 		Address:    args.NomadAddress,
 		AllocsDir:  args.NomadAllocsDir,
 		MetaPrefix: args.NomadMetaPrefix,
 	}
 
-	if args.NomadNodeID != "" {
-		nomad.NodeID = args.NomadNodeID
-	} else {
-		nomad.SetNodeIDFromEnvs()
+	err := nmd.NewClient()
+	if err != nil {
+		log.Fatalln(err)
 	}
 
+	if args.NomadNodeID != "" {
+		nmd.NodeID = args.NomadNodeID
+	} else {
+		log.Fatalln("no nomad id found")
+	}
+
+	m := util.NewMetrics()
 	switch args.LogShipper {
 	case "fluentbit":
-		fluentbit := &fluentbit.Fluentbit{
-			Nomad:     nomad,
-			ConfFile:  args.FluentbitConfFile,
-			TagPrefix: args.FluentbitTagPrefix,
-			Parser:    args.FluentbitParser,
-			ReloadCmd: args.ReloadCmd,
+		slog.Info("Starting nomad-logger for Fluentbit")
+		fb := &fluentbit.Fluentbit{
+			Nomad:         nmd,
+			ConfFile:      args.FluentbitConfFile,
+			TagPrefix:     args.FluentbitTagPrefix,
+			Parser:        args.FluentbitParser,
+			ReloadCmd:     args.ReloadCmd,
+			CheckInterval: args.CheckInterval,
 		}
-		fluentbit.Run()
+		go fb.Run(m)
 	case "promtail":
-		promtail := &promtail.Promtail{
-			Nomad:       nomad,
-			TargetsFile: args.PromtailTargetsFile,
+		slog.Info("Starting nomad-logger for Promtail")
+		pt := &promtail.Promtail{
+			Nomad:         nmd,
+			TargetsFile:   args.PromtailTargetsFile,
+			CheckInterval: args.CheckInterval,
 		}
-		promtail.Run()
+		go pt.Run(m)
 	default:
 		log.Fatalf("Invalid log shipper type '%s'", args.LogShipper)
 	}
 
+	prometheus.MustRegister(promversion.NewCollector("nomad_logger"))
+	prometheus.Unregister(collectors.NewGoCollector())
+	http.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
+	httpErr := http.ListenAndServe(fmt.Sprintf(":%s", args.PrometheusPort), nil)
+	if httpErr != nil {
+		log.Fatalln(httpErr.Error())
+	}
 }
