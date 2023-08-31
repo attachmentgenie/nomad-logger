@@ -50,8 +50,12 @@ func main() {
 	if args.NomadNodeID != "" {
 		nmd.NodeID = args.NomadNodeID
 	} else {
-		log.Fatalln("no nomad id found")
+		nmdErr := nmd.SetNodeIDFromEnvs()
+		if nmdErr != nil {
+			log.Fatalf("no nomad id found '%s'", nmdErr.Error())
+		}
 	}
+	slog.Info("collecting allocs for", "node_id", nmd.NodeID)
 
 	m := util.NewMetrics()
 	switch args.LogShipper {
