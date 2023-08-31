@@ -3,6 +3,8 @@ package nomad
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"regexp"
 
 	"github.com/hashicorp/nomad/api"
@@ -25,6 +27,17 @@ func (n *Nomad) NewClient() error {
 	}
 
 	n.Client = client
+	return nil
+}
+
+func (n *Nomad) SetNodeIDFromEnvs() error {
+	q := &api.QueryOptions{Namespace: os.Getenv("NOMAD_NAMESPACE")}
+	alloc, _, err := n.Client.Allocations().Info(os.Getenv("NOMAD_ALLOC_ID"), q)
+	if err != nil {
+		return err
+	}
+	slog.Info(fmt.Sprintf("Found node id %s using env vars\n", alloc.NodeID))
+	n.NodeID = alloc.NodeID
 	return nil
 }
 
