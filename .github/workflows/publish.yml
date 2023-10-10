@@ -1,4 +1,4 @@
-name: release artifacts for tag
+name: publish artifacts for tag
 on:
   push:
     tags:
