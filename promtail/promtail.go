@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/dmaes/nomad-logger/nomad"
-	"github.com/dmaes/nomad-logger/util"
+	"github.com/attachmentgenie/nomad-logger/nomad"
+	"github.com/attachmentgenie/nomad-logger/util"
 
 	"github.com/hashicorp/nomad/api"
 	"gopkg.in/yaml.v3"

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/dmaes/nomad-logger/util"
 	"log"
 	"log/slog"
 	"net/http"
@@ -10,12 +9,13 @@ import (
 	"github.com/alexflint/go-arg"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	promversion "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	promversion "github.com/prometheus/common/version"
 
-	"github.com/dmaes/nomad-logger/fluentbit"
-	"github.com/dmaes/nomad-logger/nomad"
-	"github.com/dmaes/nomad-logger/promtail"
+	"github.com/attachmentgenie/nomad-logger/fluentbit"
+	"github.com/attachmentgenie/nomad-logger/nomad"
+	"github.com/attachmentgenie/nomad-logger/promtail"
+	"github.com/attachmentgenie/nomad-logger/util"
 )
 
 var args struct {

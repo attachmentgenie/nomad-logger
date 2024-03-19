@@ -59,7 +59,7 @@ or use the `--reload-cmd` flag to execute a command every time the config file c
 
 ## Installing/Building
 
-You can just `go install github.com/dmaes/nomad-logger@latest` or `git clone` and `go build` this.
+You can just `go install github.com/attachmentgenie/nomad-logger@latest` or `git clone` and `go build` this.
 
 There is also a container (`ghcr.io/dmaes/nomad-logger`) that you can use.
 This container is build for every commit, you can either use the commit sha or `latest` as tag.

@@ -11,8 +11,8 @@ import (
 
 	"github.com/hashicorp/nomad/api"
 
-	"github.com/dmaes/nomad-logger/nomad"
-	"github.com/dmaes/nomad-logger/util"
+	"github.com/attachmentgenie/nomad-logger/nomad"
+	"github.com/attachmentgenie/nomad-logger/util"
 )
 
 type Fluentbit struct {
