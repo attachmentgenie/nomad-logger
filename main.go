@@ -5,17 +5,19 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/alexflint/go-arg"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-	promversion "github.com/prometheus/client_golang/prometheus/collectors/version"
+	promcolversion "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	promversion "github.com/prometheus/common/version"
+	"github.com/prometheus/exporter-toolkit/web"
 
 	"github.com/attachmentgenie/nomad-logger/fluentbit"
 	"github.com/attachmentgenie/nomad-logger/nomad"
 	"github.com/attachmentgenie/nomad-logger/promtail"
-	"github.com/attachmentgenie/nomad-logger/util"
 )
 
 var args struct {
@@ -33,7 +35,19 @@ var args struct {
 	CheckInterval       int64  `arg:"--check-interval,env:CHECK_INTERVAL" default:"1" help:"Interval (sec) between checking for new allocations."`
 }
 
+var (
+	commit  = "none"
+	date    = "unknown"
+	service = "nomad-logger"
+	version = "dev"
+)
+
 func main() {
+	promversion.Revision = commit
+	promversion.BuildDate = date
+	promversion.Version = version
+	promNamespace := strings.ReplaceAll(string(service), "-", "_")
+
 	arg.MustParse(&args)
 
 	nmd := &nomad.Nomad{
@@ -57,7 +71,12 @@ func main() {
 	}
 	slog.Info("collecting allocs for", "node_id", nmd.NodeID)
 
-	m := util.NewMetrics()
+	reg := prometheus.NewRegistry()
+	m := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: promNamespace,
+		Name:      "allocs_processed",
+	})
+	reg.MustRegister(m)
 	switch args.LogShipper {
 	case "fluentbit":
 		slog.Info("Starting nomad-logger for Fluentbit")
@@ -82,9 +101,26 @@ func main() {
 		log.Fatalf("Invalid log shipper type '%s'", args.LogShipper)
 	}
 
-	prometheus.MustRegister(promversion.NewCollector("nomad_logger"))
-	prometheus.Unregister(collectors.NewGoCollector())
-	http.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
+	reg.MustRegister(promcolversion.NewCollector(promNamespace))
+	reg.Unregister(collectors.NewGoCollector())
+
+	landingConfig := web.LandingConfig{
+		Name:    service,
+		Version: version,
+		Links: []web.LandingLinks{
+			{
+				Address: "/metrics",
+				Text:    "metrics",
+			},
+		},
+	}
+	landingPage, err := web.NewLandingPage(landingConfig)
+	if err != nil {
+		panic(err)
+	}
+
+	http.Handle("/", landingPage)
+	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	httpErr := http.ListenAndServe(fmt.Sprintf(":%s", args.PrometheusPort), nil)
 	if httpErr != nil {
 		log.Fatalln(httpErr.Error())

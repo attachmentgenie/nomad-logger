@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/hashicorp/nomad/api"
+	"github.com/prometheus/client_golang/prometheus"
+	"gopkg.in/yaml.v3"
+
 	"github.com/attachmentgenie/nomad-logger/nomad"
 	"github.com/attachmentgenie/nomad-logger/util"
-
-	"github.com/hashicorp/nomad/api"
-	"gopkg.in/yaml.v3"
 )
 
 type Promtail struct {
@@ -18,7 +19,7 @@ type Promtail struct {
 	CheckInterval int64
 }
 
-func (p *Promtail) Run(m *util.Metrics) {
+func (p *Promtail) Run(m prometheus.Gauge) {
 	for {
 		time.Sleep(1 * time.Second)
 		allocs, err := p.Nomad.Allocs()
@@ -26,7 +27,7 @@ func (p *Promtail) Run(m *util.Metrics) {
 			slog.Error(err.Error())
 		}
 
-		m.Allocs.Set(float64(len(allocs)))
+		m.Set(float64(len(allocs)))
 		updateErr := p.UpdatePromtailTargets(allocs)
 		if updateErr != nil {
 			slog.Error(updateErr.Error())

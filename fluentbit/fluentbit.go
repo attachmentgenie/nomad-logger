@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"log/slog"
 	"strings"
 	"text/template"
@@ -27,7 +28,7 @@ type Fluentbit struct {
 //go:embed fluentbit-conf.gotmpl
 var FluentbitConfTmpl string
 
-func (f *Fluentbit) Run(m *util.Metrics) {
+func (f *Fluentbit) Run(m prometheus.Gauge) {
 	for {
 		time.Sleep(1 * time.Second)
 		allocs, err := f.Nomad.Allocs()
@@ -35,7 +36,7 @@ func (f *Fluentbit) Run(m *util.Metrics) {
 			slog.Error(err.Error())
 		}
 
-		m.Allocs.Set(float64(len(allocs)))
+		m.Set(float64(len(allocs)))
 		updateErr := f.UpdateConf(allocs)
 		if updateErr != nil {
 			slog.Error(updateErr.Error())

@@ -2,26 +2,10 @@ package util
 
 import (
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"log/slog"
 	"os"
 	"os/exec"
 )
-
-type Metrics struct {
-	Allocs prometheus.Gauge
-}
-
-func NewMetrics() *Metrics {
-	m := &Metrics{
-		Allocs: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "nomad_logger",
-			Name:      "allocs_processed",
-		}),
-	}
-	prometheus.MustRegister(m.Allocs)
-	return m
-}
 
 func WriteConfig(Config string, File string, ReloadCmd string) error {
 	oldConfig := ""
